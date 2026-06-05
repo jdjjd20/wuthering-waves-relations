@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鸣潮 - 角色关系网络图</title>
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+<style>
+:root{--bg:#0a0c14;--panel-bg:#111422;--text:#c8d0e0;--accent:#4a9eff;--gold:#d4a853;--border:#1e2130;--hover:#1a1d30}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"Microsoft YaHei","PingFang SC",sans-serif;height:100vh;overflow:hidden;display:flex}
+.sidebar{width:370px;min-width:370px;background:var(--panel-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:10;transition:transform 0.3s}
+.sidebar-header{padding:20px;border-bottom:1px solid var(--border);text-align:center}
+.sidebar-header h1{font-size:1.6em;background:linear-gradient(135deg,#d4a853,#e8c97a,#d4a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:5px}
+.sidebar-header .subtitle{font-size:0.8em;color:#6b7084;margin-top:2px}
+.search-box{margin:12px 16px;position:relative}
+.search-box input{width:100%;padding:10px 36px 10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.9em;outline:none;transition:border-color 0.2s}
+.search-box input:focus{border-color:var(--accent)}
+.search-box .search-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#6b7084;pointer-events:none}
+.char-info{flex:1;overflow-y:auto;padding:16px}
+.char-info .placeholder{text-align:center;color:#4b5060;margin-top:60px;font-size:0.9em;line-height:2}
+.card{animation:fadeIn 0.3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.card .name{font-size:1.4em;font-weight:bold;margin-bottom:2px}
+.card .title-line{font-size:0.82em;color:#6b7084;margin-bottom:8px}
+.card .tags{margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px}
+.card .tags span{display:inline-block;padding:2px 10px;border-radius:12px;font-size:0.7em;border:1px solid}
+.card .desc{font-size:0.85em;line-height:1.7;color:#a0a8c0;margin-bottom:14px}
+.card h4{font-size:0.85em;color:#8b90a0;margin-bottom:6px;letter-spacing:2px}
+.card .relation-list{list-style:none}
+.card .relation-list li{display:flex;align-items:center;gap:8px;padding:6px 10px;margin:3px 0;border-radius:6px;background:var(--bg);font-size:0.85em;cursor:pointer;transition:background 0.2s}
+.card .relation-list li:hover{background:var(--hover)}
+.card .relation-list .rel-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.card .relation-list .rel-type{font-size:0.72em;color:#6b7084;margin-left:auto;flex-shrink:0}
+.legend{padding:10px 16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:5px;max-height:100px;overflow-y:auto}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:0.67em;color:#8b90a0}
+.legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.graph-area{flex:1;position:relative}
+#mynetwork{width:100%;height:100%;background:var(--bg)}
+.mobile-toggle{display:none;position:absolute;top:12px;left:12px;z-index:20;background:var(--panel-bg);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:0.9em}
+.reset-btn{position:absolute;bottom:20px;right:20px;z-index:10;background:var(--panel-bg);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85em;transition:background 0.2s}
+.reset-btn:hover{background:var(--hover)}
+@media(max-width:768px){
+.sidebar{position:absolute;left:0;top:0;bottom:0;transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.mobile-toggle{display:flex!important}
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar" id="sidebar">
+<div class="sidebar-header">
+<h1>鸣 潮</h1>
+<div class="subtitle">Wuthering Waves · 角色关系网络</div>
+<div style="font-size:0.7em;color:#4b5060;margin-top:4px" id="charCount">共收录 — 个节点 · — 条关系</div>
+</div>
+<div class="search-box">
+<input type="text" id="searchInput" placeholder="搜索角色…" />
+<span class="search-icon">&#128269;</span>
+</div>
+<div class="char-info" id="charInfo">
+<div class="placeholder" id="placeholder">
+<div style="font-size:2em;margin-bottom:8px">&#127917;</div>
+<div>点击角色节点查看关系详情</div>
+<div style="font-size:0.72em;margin-top:8px;color:#3b4050">拖拽移动 · 滚轮缩放 · 双击聚焦</div>
+</div>
+</div>
+<div class="legend" id="legend"></div>
+</div>
+
+<div class="graph-area">
+<button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">&#9776; 菜单</button>
+<div id="mynetwork"></div>
+<button class="reset-btn" onclick="resetNetwork()">&#8634; 重置视图</button>
+</div>
+
+<script>
+// ==================== 角色数据（按版本和阵营整理） ====================
+const characters = [
+  // === 主角 ===
+  {id:"漂泊者",label:"漂泊者",group:"主角",title:"御者·群星的调律者·黑海岸缔造者·星炬学院前辈",desc:"本作主角，身世成谜的高维旅人。曾建立黑海岸组织，舍弃记忆后在世界各地漂泊。先后游历瑝珑、黎那汐塔、拉海洛。与守岸人命运相连，曾救下并抚养爱弥斯，曾失约于弗洛洛。千咲称其为前辈，尤诺视其为唯一记得自己之人。",element:"衍射/湮灭/气动",weapon:"迅刀",rarity:"5★",ver:"1.0"},
+  // === 瑝珑·今州 (1.0~1.4) ===
+  {id:"秧秧",label:"秧秧",group:"瑝珑今州",title:"今州巡尉·漂泊者引路人",desc:"漂泊者苏醒后遇见的第一位伙伴。温柔善良，一路陪伴漂泊者开启最初旅程，是鸣潮的看板娘。",element:"气动",weapon:"迅刀",rarity:"4★",ver:"1.0"},
+  {id:"炽霞",label:"炽霞",group:"瑝珑今州",title:"今州巡尉·天城移民",desc:"热情坦率的外放型伙伴，爱吃辣说方言。从小受英雄戏剧和父亲影响立志成为英雄。在漂泊者苏醒后与秧秧一起陪伴冒险。",element:"热熔",weapon:"佩枪",rarity:"4★",ver:"1.0"},
+  {id:"白芷",label:"白芷",group:"瑝珑今州",title:"华胥研究院·考古学家",desc:"华胥研究院所属冰山美人考古学家，性格理性冷淡。与残响生物'忧昙'共生，曾在危机中失去对人的信任。",element:"冷凝",weapon:"音感仪",rarity:"4★",ver:"1.0"},
+  {id:"散华",label:"散华",group:"瑝珑今州",title:"今汐贴身近卫",desc:"今汐的贴身护卫，冷凝属性剑士。表面接待来访宾客，暗中处理不法之徒，是今汐最信赖之人。",element:"冷凝",weapon:"迅刀",rarity:"4★",ver:"1.0"},
+  {id:"桃祈",label:"桃祈",group:"瑝珑今州",title:"天工部事务长",desc:"今州天工部事务长，负责城防建设。以防御力见长，沉稳可靠的指挥官，与忌炎同为今汐核心下属。",element:"湮灭",weapon:"长刃",rarity:"4★",ver:"1.0"},
+  {id:"丹瑾",label:"丹瑾",group:"瑝珑今州",title:"流浪剑客",desc:"独立流浪剑客，高风险高回报的战斗风格。性格坚韧独立，多次与漂泊者并肩作战。",element:"湮灭",weapon:"迅刀",rarity:"4★",ver:"1.0"},
+  {id:"渊武",label:"渊武",group:"瑝珑今州",title:"武学大师",desc:"沉稳武学大师，蓝色调展现沉静优雅气质。电属性臂铠使用者，可生成雷池强化队友。",element:"导电",weapon:"臂铠",rarity:"4★",ver:"1.0"},
+  {id:"鉴心",label:"鉴心",group:"瑝珑今州",title:"修道者",desc:"修行道士，追求内心平静与武道极致。拥有格挡反击机制和自我治疗能力，与漂泊者在旅途中相遇。",element:"气动",weapon:"臂铠",rarity:"5★",ver:"1.0"},
+  {id:"凌阳",label:"凌阳",group:"瑝珑今州",title:"舞狮少年",desc:"今州舞狮团成员，活力四射的冷凝臂铠使用者。每年'狻猊巡岁'才正式'醒狮'表演。",element:"冷凝",weapon:"臂铠",rarity:"5★",ver:"1.0"},
+  {id:"维里奈",label:"维里奈",group:"瑝珑今州",title:"植物学家·顶级辅助",desc:"热爱植物的温柔少女，游戏顶级通用辅助。光合作用能量可治疗队友并提供15%全队伤害增益。",element:"衍射",weapon:"音感仪",rarity:"5★",ver:"1.0"},
+  {id:"莫特斐",label:"莫特斐",group:"瑝珑今州",title:"华胥研究院·研究员",desc:"华胥研究院才华横溢的研究员。擅长重击增益，为忌炎等重击核心角色提供强力辅助。帮助漂泊者解读信物。",element:"热熔",weapon:"佩枪",rarity:"4★",ver:"1.0"},
+  {id:"忌炎",label:"忌炎",group:"瑝珑今州",title:"夜归将军",desc:"今州夜归军将军。弯刀之役带领部队突围，主导夜归军改制。与无冠者多次交战，是今州军方核心。",element:"气动",weapon:"长刃",rarity:"5★",ver:"1.0"},
+  {id:"吟霖",label:"吟霖",group:"瑝珑今州",title:"前安全部特工",desc:"前今州安全部成员，电属性音感仪使用者。操控人偶战斗，后台协同攻击出色。与漂泊者多次合作执行任务。",element:"导电",weapon:"音感仪",rarity:"5★",ver:"1.0"},
+  {id:"今汐",label:"今汐",group:"瑝珑今州",title:"今州令尹·角的共鸣者",desc:"今州令尹，青龙岁主'角'的共鸣者。幼时被角复活抚养，拜长离为师。掌握时序之力，首位对漂泊者展现深厚感情的角色。",element:"衍射",weapon:"长刃",rarity:"5★",ver:"1.1"},
+  {id:"长离",label:"长离",group:"瑝珑今州",title:"今汐恩师·漂泊者战友",desc:"今汐的恩师与顾问。实力深不可测，弯刀之役后辅佐今汐重振今州。与漂泊者结下深厚战友情，合轴体系核心。",element:"热熔",weapon:"迅刀",rarity:"5★",ver:"1.1"},
+  {id:"相里要",label:"相里要",group:"瑝珑今州",title:"华胥研究院·幕僚",desc:"华胥研究院免费五星DPS。擅长连招与范围伤害，共鸣解放后进入强化状态。月树屋幕后英雄。",element:"导电",weapon:"臂铠",rarity:"5★",ver:"1.2"},
+  {id:"折枝",label:"折枝",group:"瑝珑今州",title:"持续伤害输出",desc:"冷凝音感仪使用者，专注持续伤害。通过普攻与变奏积攒共鸣赋能，召唤幻象印记进行强力攻击。",element:"冷凝",weapon:"音感仪",rarity:"5★",ver:"1.2"},
+  {id:"釉瑚",label:"釉瑚",group:"瑝珑今州",title:"冰系协同辅助",desc:"四星冷凝治疗角色，风格古怪随机。提供长达28秒的协同攻击伤害增益，是协同攻击队伍的强力辅助。",element:"冷凝",weapon:"臂铠",rarity:"4★",ver:"1.3"},
+  {id:"灯灯",label:"灯灯",group:"瑝珑今州",title:"双形态辅助",desc:"瑝珑四星角色，1.4版本加入。拥有独特的双形态切换机制，可为队伍提供灵活的战斗支援。",element:"导电",weapon:"长刃",rarity:"4★",ver:"1.4"},
+  // === 黑海岸 (1.3~1.4) ===
+  {id:"守岸人",label:"守岸人",group:"黑海岸",title:"黑海岸守护者·漂泊者的命运共同体",desc:"黑海岸灵魂人物，因漂泊者唤醒而生。在无数次轮回中始终等待漂泊者归来。曾将最高权限交予漂泊者，被玩家称为'官方老婆'。使用泰缇斯系统力量进行支援与治疗。",element:"衍射",weapon:"音感仪",rarity:"5★",ver:"1.3"},
+  {id:"椿",label:"椿",group:"黑海岸",title:"黑海岸之花·命定之种",desc:"黑海岸执行者，被漂泊者赠予象征身份的'黑花'。在'藤蔓'与'超级藤蔓'形态间切换，擅长空中战斗与AoE伤害。",element:"湮灭",weapon:"迅刀",rarity:"5★",ver:"1.4"},
+  {id:"秋水",label:"秋水",group:"黑海岸",title:"黑海岸执花·情报商",desc:"黑海岸所属气动佩枪使用者，同时也是神秘的流浪情报商人。机动性极强，为漂泊者提供关键情报。",element:"气动",weapon:"佩枪",rarity:"4★",ver:"1.0"},
+  {id:"卜灵",label:"卜灵",group:"黑海岸",title:"黑海岸·电系万能辅助",desc:"黑海岸所属四星电属性音感仪使用者。让队伍构筑更便宜灵活，降低对昂贵五星辅助的依赖，大幅拓展实用编队选择。",element:"导电",weapon:"音感仪",rarity:"4★",ver:"2.8"},
+  {id:"安可",label:"安可",group:"黑海岸",title:"黑海岸客卿·小冒险家",desc:"黑海岸客卿，活泼开朗的小女孩。天真可爱但实力不俗，与漂泊者建立深厚友谊。",element:"热熔",weapon:"音感仪",rarity:"5★",ver:"1.0"},
+  // === 黎那汐塔 (2.0~2.8) ===
+  {id:"珂莱塔",label:"珂莱塔",group:"黎那汐塔",title:"莫塔里家族二小姐",desc:"黎那汐塔莫塔里家族贵族小姐。战斗中手枪与霰弹枪切换，对漂泊者表现出特殊亲近，昵称漂泊者为'猫眼石'。在狂欢节事件中与漂泊者深入合作揭露神明真相。",element:"冷凝",weapon:"佩枪",rarity:"5★",ver:"2.0"},
+  {id:"洛可可",label:"洛可可",group:"黎那汐塔",title:"愚人剧团·湮灭辅助",desc:"愚人剧团成员，强力湮灭辅助。及时援助漂泊者对抗叹息古龙。群控涡旋聚拢敌人，与椿等湮灭DPS协同极佳。",element:"湮灭",weapon:"臂铠",rarity:"5★",ver:"2.0"},
+  {id:"菲比",label:"菲比",group:"黎那汐塔",title:"拉古那修会教士",desc:"拉古那修会教士，引导漂泊者进入声骸之城。拥有'赦免'与'告解'双形态。协助漂泊者调查溯海之鲸与'海妖'真相。",element:"衍射",weapon:"音感仪",rarity:"5★",ver:"2.1"},
+  {id:"布兰特",label:"布兰特",group:"黎那汐塔",title:"愚人剧团团长·裴魁德号船长",desc:"黎那汐塔愚人剧团团长，浪漫洒脱。舞台之上为故事更换面具，舞台之下只凭一颗真心。同时也是裴魁德号船长，热熔迅刀使用者，盾奶副C兼主C。与洛可可(剧团副手)搭档默契。",element:"热熔",weapon:"迅刀",rarity:"5★",ver:"2.1"},
+  {id:"坎特蕾拉",label:"坎特蕾拉",group:"黎那汐塔",title:"翡萨烈家主·海洋守护者",desc:"翡萨烈家族家主，湮灭治疗与协同攻击角色。与漂泊者一同前往阿维纽林神学院寻找卡提希娅，与弗洛洛和洛可可有强力湮灭协同。",element:"湮灭",weapon:"音感仪",rarity:"5★",ver:"2.2"},
+  {id:"赞妮",label:"赞妮",group:"黎那汐塔",title:"炼狱战士·光噪主C",desc:"衍射长刃使用者，在常态与'炼狱'模式间切换。擅长格挡，高技巧玩法。与菲比有强力光噪协同。",element:"衍射",weapon:"长刃",rarity:"5★",ver:"2.3"},
+  {id:"夏空",label:"夏空",group:"黎那汐塔",title:"吟游诗人",desc:"第一位可玩吟游诗人，气动佩枪使用者。在侵蚀/风蚀队伍中提供强力辅助，引入独特分身机制提升队友箭矢伤害。",element:"气动",weapon:"佩枪",rarity:"5★",ver:"2.3"},
+  {id:"卡提希娅",label:"卡提希娅",group:"黎那汐塔",title:"圣女·鸣式创造的生命",desc:"殉道圣女，实为鸣式创造的生命。拥有'卡提亚'与变身形态'Flirtilis'。最终选择自我觉醒否定宿命论，与漂泊者并肩作战后消失在时间中。",element:"气动",weapon:"迅刀",rarity:"5★",ver:"2.4"},
+  {id:"露帕",label:"露帕",group:"黎那汐塔",title:"七丘角斗士·漂泊者搭档",desc:"七丘天才角斗士，与漂泊者搭档夺得大角斗赛冠军。在与鸣式海之女的战斗中取回失去记忆，为七丘夺回和平。",element:"热熔",weapon:"长刃",rarity:"5★",ver:"2.4"},
+  {id:"弗洛洛",label:"弗洛洛",group:"黎那汐塔",title:"前残星会会监·漂泊者失约之人",desc:"原残星会会监，后转为可玩角色。漂泊者曾失约于她，在彼岸索诺拉中揭示两人过去。擅长场外湮灭DPS，傀儡赫卡忒进行毁灭性持续攻击。与漂泊者关系最为复杂——亦敌亦友。",element:"湮灭",weapon:"音感仪",rarity:"5★",ver:"2.5"},
+  {id:"奥古斯塔",label:"奥古斯塔",group:"黎那汐塔",title:"时间操控者",desc:"电属性长刃使用者，以时间操控为核心。积累威势、权威与庄严三种资源释放招牌停时共鸣解放。为队伍提供护盾与15%伤害增幅。",element:"导电",weapon:"长刃",rarity:"5★",ver:"2.6"},
+  {id:"尤诺",label:"尤诺",group:"黎那汐塔",title:"月之守护者·被遗忘之人",desc:"气动臂铠使用者，副C兼治疗。在'半月'与'新月'状态间切换。曾为拯救世界消散在月光中，除漂泊者外所有人忘记她的存在。漂泊者从混沌中将她'锚定'带回。",element:"气动",weapon:"臂铠",rarity:"5★",ver:"2.6"},
+  {id:"嘉贝莉娜",label:"嘉贝莉娜",group:"黑海岸",title:"黑海岸执行者·永焚烈焰魔",desc:"黑海岸执行者兼神秘猎魔人，与宠物'奇美拉'并肩作战。在常态与魔神形态间切换。深入黑潮协助漂泊者对抗被宝石复活的鸣式，为黎那汐塔带来和平曙光。",element:"热熔",weapon:"佩枪",rarity:"5★",ver:"2.7"},
+  {id:"仇远",label:"仇远",group:"黎那汐塔",title:"明庭来使·漂泊者支援者",desc:"从瑝珑明庭而来的气动剑客。受人之托为帮助漂泊者前来拉古那。围绕'剑客独白'资源展开战斗，灵动风雅，为队伍提供强力增益。",element:"气动",weapon:"迅刀",rarity:"5★",ver:"2.7"},
+  {id:"千咲",label:"千咲",group:"拉海洛",title:"漂泊者后辈·穗波咖啡店主",desc:"漂泊者在星炬学院的后辈，后加入黑海岸。湮灭长刃使用者，独特的链锯玩法。在黑海岸休养期间与漂泊者重聚，樱花下袒露心迹。",element:"湮灭",weapon:"长刃",rarity:"5★",ver:"2.8"},
+  // === 拉海洛 (3.0~3.4) ===
+  {id:"琳奈",label:"琳奈",group:"拉海洛",title:"星炬学院新生",desc:"拉海洛星炬学院学生，衍射佩枪使用者。曾使用残星会成员名字作伪装。驱车带漂泊者逃离虚诞虫袭击。",element:"衍射",weapon:"佩枪",rarity:"5★",ver:"3.0"},
+  {id:"莫宁",label:"莫宁",group:"拉海洛",title:"深空联合·星炬学院教授",desc:"星炬学院文静教授，热熔长刃使用者。兼具辅助与副C定位，双战斗形态与外骨骼设计。为使人工太阳发射只身进入炉芯内部。",element:"热熔",weapon:"长刃",rarity:"5★",ver:"3.0"},
+  {id:"爱弥斯",label:"爱弥斯",group:"拉海洛",title:"漂泊者养女·隧者共鸣者·电子幽灵",desc:"漂泊者多年前在冰原救下并抚养的女孩。后因超频肉体损毁成为只有漂泊者能见的'电子幽灵'。从虚质空间回到过去协助隧者对抗阿列夫一，完成因果闭环。与漂泊者的关系极为深刻——养父/养女。",element:"热熔",weapon:"迅刀",rarity:"5★",ver:"3.1"},
+  {id:"陆·赫斯",label:"陆·赫斯",group:"拉海洛",title:"星炬学院·天空骑士",desc:"星炬学院衍射臂铠使用者，主打空中战斗。呜呜物流成员。在罗伊冰原与漂泊者偶遇，一同面对辛吉勒姆。",element:"衍射",weapon:"臂铠",rarity:"5★",ver:"3.1"},
+  {id:"西格莉卡",label:"西格莉卡",group:"拉海洛",title:"星炬学院·声骸主C",desc:"星炬学院气动臂铠使用者，开朗热忱如小太阳。与达妮娅结下深厚友谊，是达妮娅在学院最珍贵的朋友。",element:"气动",weapon:"臂铠",rarity:"5★",ver:"3.2"},
+  {id:"绯雪",label:"绯雪",group:"拉海洛",title:"冰之剑士",desc:"拉海洛冷凝迅刀使用者，霜渐主C。以冰属性技能和剑术见长，展现优雅的冰雪之力。",element:"冷凝",weapon:"迅刀",rarity:"5★",ver:"3.3"},
+  {id:"达妮娅",label:"达妮娅",group:"拉海洛",title:"残星会实验体·漂泊者的抉择",desc:"残星会为利用鸣式阿列夫一力量制造的容器。被安插进星炬学院后第一次体验普通生活。为阻止阿列夫一卷土重来，选择自我放逐至虚质空间。与西格莉卡是最亲密的朋友。",element:"热熔",weapon:"音感仪",rarity:"5★",ver:"3.3"},
+  {id:"洛瑟菈",label:"洛瑟菈",group:"拉海洛",title:"星炬学院校长·深空联合",desc:"星炬学院校长，冷凝音感仪使用者。同时隶属于深空联合研究院与先行公约。3.4版本上线。",element:"冷凝",weapon:"音感仪",rarity:"5★",ver:"3.4"},
+  // === 残星会 ===
+  {id:"伤痕",label:"伤痕",group:"残星会",title:"残星会执行者",desc:"残星会成员，漂泊者的宿敌之一。多次与漂泊者交锋，试图拉拢漂泊者。拥有强大的湮灭之力。",element:"湮灭",weapon:"臂铠",rarity:"—",ver:"1.0"},
+  // === 独立势力 ===
+  {id:"卡卡罗",label:"卡卡罗",group:"独立",title:"幽灵猎犬团长",desc:"跨国独立雇佣兵组织'幽灵猎犬'团长，曾为流放者。电属性长刃使用者，共鸣解放状态下输出极强，被誉为索拉里斯最强共鸣者之一。",element:"导电",weapon:"长刃",rarity:"5★",ver:"1.0"},
+  // === 岁主/鸣式 ===
+  {id:"角",label:"角",group:"岁主鸣式",title:"青龙岁主",desc:"瑝珑的岁主——青龙。在今汐襁褓中将其救活并赋予时序之力。今汐的力量来源与守护者。",element:"衍射",weapon:"—",rarity:"—",ver:"1.0"},
+  {id:"无冠者",label:"无冠者",group:"岁主鸣式",title:"鸣式·无冠者",desc:"瑝珑鸣式之一。弯刀之役带来巨大灾难，忌炎带领夜归军与其多次交战。是今州面临的主要威胁。",element:"湮灭",weapon:"—",rarity:"—",ver:"1.0"},
+];
+
+// ==================== 关系数据 ====================
+const relations = [
+  // ===== 漂泊者（核心，连接几乎所有角色）=====
+  {from:"漂泊者",to:"秧秧",type:"苏醒后第一人",color:"#fc0"},
+  {from:"漂泊者",to:"炽霞",type:"早期伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"白芷",type:"研究院相助",color:"#5cc"},
+  {from:"漂泊者",to:"散华",type:"今汐信使",color:"#999"},
+  {from:"漂泊者",to:"桃祈",type:"今州相识",color:"#999"},
+  {from:"漂泊者",to:"丹瑾",type:"旅途同伴",color:"#5cc"},
+  {from:"漂泊者",to:"渊武",type:"相识",color:"#999"},
+  {from:"漂泊者",to:"鉴心",type:"旅途伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"凌阳",type:"伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"维里奈",type:"伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"莫特斐",type:"信物解密",color:"#6cf"},
+  {from:"漂泊者",to:"忌炎",type:"战友",color:"#fc0"},
+  {from:"漂泊者",to:"吟霖",type:"合作任务",color:"#6cf"},
+  {from:"漂泊者",to:"今汐",type:"挚友",color:"#fc0"},
+  {from:"漂泊者",to:"长离",type:"战友",color:"#fc0"},
+  {from:"漂泊者",to:"相里要",type:"合作",color:"#6cf"},
+  {from:"漂泊者",to:"折枝",type:"相识",color:"#999"},
+  {from:"漂泊者",to:"釉瑚",type:"相识",color:"#999"},
+  {from:"漂泊者",to:"守岸人",type:"命运共同体·黑海岸缔造者",color:"#f6a"},
+  {from:"漂泊者",to:"椿",type:"羁绊·黑花之赠",color:"#f9c"},
+  {from:"漂泊者",to:"秋水",type:"情报合作",color:"#6cf"},
+  {from:"漂泊者",to:"安可",type:"伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"珂莱塔",type:"羁绊·狂欢节共战",color:"#f9c"},
+  {from:"漂泊者",to:"菲比",type:"教士引导",color:"#5cc"},
+  {from:"漂泊者",to:"布兰特",type:"裴魁德号伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"洛可可",type:"愚人剧团援助",color:"#5cc"},
+  {from:"漂泊者",to:"赞妮",type:"伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"坎特蕾拉",type:"阿维纽林同行",color:"#f9c"},
+  {from:"漂泊者",to:"夏空",type:"伙伴",color:"#5cc"},
+  {from:"漂泊者",to:"卡提希娅",type:"羁绊·并肩作战",color:"#f9c"},
+  {from:"漂泊者",to:"露帕",type:"搭档·角斗赛冠军",color:"#fc0"},
+  {from:"漂泊者",to:"弗洛洛",type:"失约·亦敌亦友",color:"#c8f"},
+  {from:"漂泊者",to:"奥古斯塔",type:"黎那汐塔相识",color:"#999"},
+  {from:"漂泊者",to:"尤诺",type:"唯一记得她之人",color:"#f9c"},
+  {from:"漂泊者",to:"仇远",type:"明庭来援",color:"#fc0"},
+  {from:"漂泊者",to:"嘉贝莉娜",type:"黑潮中共战",color:"#5cc"},
+  {from:"漂泊者",to:"千咲",type:"前辈·樱花下重逢",color:"#f9c"},
+  {from:"漂泊者",to:"琳奈",type:"拉海洛引路",color:"#5cc"},
+  {from:"漂泊者",to:"莫宁",type:"研究院教授",color:"#6cf"},
+  {from:"漂泊者",to:"爱弥斯",type:"养父/养女·因果闭环",color:"#f6a"},
+  {from:"漂泊者",to:"陆·赫斯",type:"罗伊冰原偶遇",color:"#5cc"},
+  {from:"漂泊者",to:"西格莉卡",type:"星炬学院相识",color:"#5cc"},
+  {from:"漂泊者",to:"达妮娅",type:"开导·电车难题",color:"#f9c"},
+  {from:"漂泊者",to:"绯雪",type:"拉海洛相识",color:"#999"},
+  {from:"漂泊者",to:"洛瑟菈",type:"学院校长",color:"#999"},
+  {from:"漂泊者",to:"卜灵",type:"黑海岸相识",color:"#88f"},
+  {from:"漂泊者",to:"灯灯",type:"瑝珑相识",color:"#999"},
+  {from:"漂泊者",to:"伤痕",type:"宿敌",color:"#f44"},
+  {from:"漂泊者",to:"卡卡罗",type:"合作",color:"#6cf"},
+  // ===== 今州内部关系 =====
+  {from:"秧秧",to:"炽霞",type:"巡尉同僚",color:"#88f"},
+  {from:"今汐",to:"长离",type:"师徒",color:"#fa0"},
+  {from:"今汐",to:"忌炎",type:"令尹与将军",color:"#8af"},
+  {from:"今汐",to:"散华",type:"主从",color:"#8af"},
+  {from:"今汐",to:"桃祈",type:"令尹与事务长",color:"#8af"},
+  {from:"今汐",to:"角",type:"复活与力量之源",color:"#fc0"},
+  {from:"忌炎",to:"桃祈",type:"今州城防同僚",color:"#88f"},
+  {from:"忌炎",to:"无冠者",type:"讨伐",color:"#f44"},
+  {from:"今汐",to:"无冠者",type:"敌对",color:"#f44"},
+  {from:"散华",to:"桃祈",type:"今州同僚",color:"#88f"},
+  {from:"维里奈",to:"白芷",type:"研究院同伴",color:"#88f"},
+  {from:"莫特斐",to:"白芷",type:"研究院同僚",color:"#88f"},
+  {from:"相里要",to:"莫特斐",type:"研究院同僚",color:"#88f"},
+  {from:"莫特斐",to:"忌炎",type:"重击辅助搭档",color:"#6cf"},
+  // ===== 黑海岸内部 =====
+  {from:"守岸人",to:"椿",type:"同僚·上下级",color:"#88f"},
+  {from:"守岸人",to:"秋水",type:"同僚",color:"#88f"},
+  {from:"守岸人",to:"安可",type:"守护",color:"#8af"},
+  {from:"椿",to:"嘉贝莉娜",type:"黑海岸同僚",color:"#88f"},
+  {from:"秋水",to:"安可",type:"黑海岸同僚",color:"#88f"},
+  {from:"千咲",to:"守岸人",type:"黑海岸后辈",color:"#88f"},
+  // ===== 黎那汐塔内部 =====
+  {from:"布兰特",to:"洛可可",type:"剧团团长与副手",color:"#fc0"},
+  {from:"尤诺",to:"奥古斯塔",type:"日月队组合",color:"#6cf"},
+  {from:"绯雪",to:"洛瑟菈",type:"冰系最佳搭档",color:"#6cf"},
+  {from:"达妮娅",to:"爱弥斯",type:"聚爆队关联",color:"#6cf"},
+  {from:"赞妮",to:"珂莱塔",type:"拉古那同僚",color:"#88f"},
+  {from:"珂莱塔",to:"菲比",type:"拉古那同僚",color:"#88f"},
+  {from:"珂莱塔",to:"赞妮",type:"拉古那同僚",color:"#88f"},
+  {from:"菲比",to:"赞妮",type:"光噪协同",color:"#6cf"},
+  {from:"坎特蕾拉",to:"卡提希娅",type:"神学院探寻",color:"#88f"},
+  {from:"夏空",to:"卡提希娅",type:"侵蚀协同",color:"#6cf"},
+  {from:"弗洛洛",to:"坎特蕾拉",type:"湮灭协同",color:"#6cf"},
+  {from:"弗洛洛",to:"洛可可",type:"湮灭协同",color:"#6cf"},
+  {from:"露帕",to:"卡提希娅",type:"七丘并肩",color:"#fc0"},
+  {from:"千咲",to:"弗洛洛",type:"残星会关联",color:"#999"},
+  // ===== 拉海洛内部 =====
+  {from:"莫宁",to:"琳奈",type:"学院师生",color:"#88f"},
+  {from:"莫宁",to:"爱弥斯",type:"研究关联",color:"#88f"},
+  {from:"达妮娅",to:"西格莉卡",type:"挚友·学院同伴",color:"#fc0"},
+  {from:"达妮娅",to:"莫宁",type:"学院关联",color:"#88f"},
+  {from:"达妮娅",to:"弗洛洛",type:"残星会同源",color:"#f44"},
+  {from:"陆·赫斯",to:"琳奈",type:"学院同僚",color:"#88f"},
+  {from:"洛瑟菈",to:"莫宁",type:"深空联合",color:"#88f"},
+  {from:"洛瑟菈",to:"琳奈",type:"校长与学生",color:"#8af"},
+  {from:"爱弥斯",to:"达妮娅",type:"同为漂泊者重要之人",color:"#999"},
+  // ===== 残星会 =====
+  {from:"伤痕",to:"弗洛洛",type:"前同僚",color:"#f44"},
+  {from:"弗洛洛",to:"达妮娅",type:"残星会关联",color:"#f44"},
+  // ===== 跨阵营 =====
+  {from:"守岸人",to:"今汐",type:"共鸣",color:"#999"},
+  {from:"今汐",to:"珂莱塔",type:"国际关系",color:"#999"},
+  {from:"仇远",to:"嘉贝莉娜",type:"远距离协同",color:"#6cf"},
+  {from:"夏空",to:"鉴心",type:"技能协同",color:"#6cf"},
+];
+
+document.getElementById("charCount").textContent = `共收录 ${characters.length} 个节点 · ${relations.length} 条关系`;
+
+// ==================== 配置 ====================
+const groupColors = {
+  "主角":{bg:"#d4a853",border:"#f0d060",text:"#1a1a00"},
+  "瑝珑今州":{bg:"#3b7ddd",border:"#6ba3f0",text:"#fff"},
+  "黑海岸":{bg:"#7b3db8",border:"#a870e0",text:"#fff"},
+  "黎那汐塔":{bg:"#3d9b6d",border:"#60c890",text:"#fff"},
+  "拉海洛":{bg:"#d4852a",border:"#f0a850",text:"#fff"},
+  "残星会":{bg:"#c0392b",border:"#e05040",text:"#fff"},
+  "独立":{bg:"#5c6b7a",border:"#8899aa",text:"#fff"},
+  "岁主鸣式":{bg:"#8b0000",border:"#cc2020",text:"#fff"},
+};
+
+const nodes = new vis.DataSet(characters.map(c=>({
+  id:c.id,label:c.label,group:c.group,
+  title:`<b>${c.label}</b>\n${c.title}\n${c.element} · ${c.weapon} · ${c.rarity} · v${c.ver}`,
+  font:{color:groupColors[c.group]?.text||"#fff",size:c.id==="漂泊者"?16:13,face:"Microsoft YaHei"},
+  color:{
+    background:groupColors[c.group]?.bg||"#666",
+    border:groupColors[c.group]?.border||"#888",
+    highlight:{background:groupColors[c.group]?.border||"#aaa",border:"#fff"},
+    hover:{background:groupColors[c.group]?.border||"#aaa",border:"#fff"},
+  },
+  shape:c.id==="漂泊者"?"star":"dot",
+  size:c.id==="漂泊者"?42:c.rarity==="5★"?28:c.rarity==="4★"?22:20,
+  mass:c.id==="漂泊者"?10:c.rarity==="5★"?4:3,
+  ...c,
+})));
+
+const edges = new vis.DataSet(relations.map((r,i)=>({
+  id:i,from:r.from,to:r.to,label:r.type,
+  color:{color:r.color,highlight:"#fff",hover:"#fff"},
+  font:{size:7,color:r.color,strokeWidth:0,align:"middle",face:"Microsoft YaHei"},
+  arrows:{to:{enabled:true,scaleFactor:0.4}},
+  width:r.type.includes("命运共同体")?3.5:r.type.includes("养父")?3:r.type.includes("宿敌")||r.type.includes("挚友")||r.type.includes("第一人")?2.2:r.type.includes("搭档")?2:1.2,
+  smooth:{type:"curvedCW",roundness:0.2},
+  selectionWidth:0,
+})));
+
+// ==================== 创建网络 ====================
+const container=document.getElementById("mynetwork");
+const network=new vis.Network(container,{nodes,edges},{
+  physics:{
+    solver:"forceAtlas2Based",
+    forceAtlas2Based:{gravitationalConstant:-45,centralGravity:0.006,springLength:200,springConstant:0.05,damping:0.4},
+    stabilization:{iterations:300,fit:true},
+  },
+  layout:{improvedLayout:true},
+  interaction:{hover:true,tooltipDelay:150,zoomView:true,dragView:true,navigationButtons:false},
+  nodes:{borderWidth:2.5,borderWidthSelected:5,shadow:{enabled:true,size:8}},
+  edges:{hoverWidth:0,selectionWidth:0},
+});
+
+// ==================== 图例 ====================
+const legendEl=document.getElementById("legend");
+Object.entries(groupColors).forEach(([name,colors])=>{
+  const item=document.createElement("div");
+  item.className="legend-item";
+  const dot=document.createElement("span");
+  dot.className="legend-dot";dot.style.background=colors.bg;
+  item.appendChild(dot);item.appendChild(document.createTextNode(name));
+  legendEl.appendChild(item);
+});
+
+// ==================== 交互 ====================
+let selectedNode=null;
+network.on("click",function(p){if(p.nodes.length>0)selectNode(p.nodes[0]);else deselectNode();});
+network.on("doubleClick",function(p){if(p.nodes.length>0)network.focus(p.nodes[0],{scale:1.8,animation:{duration:600,easingFunction:"easeInOutQuad"}});});
+
+function selectNode(nodeId){
+  if(selectedNode===nodeId)return;
+  selectedNode=nodeId;
+  const char=nodes.get(nodeId);
+  const connEdges=network.getConnectedEdges(nodeId);
+  const connNodes=network.getConnectedNodes(nodeId);
+  nodes.update(nodes.getIds().map(id=>{
+    const isSel=id===nodeId,isCon=connNodes.includes(id),c=nodes.get(id);
+    return{id,opacity:isSel||isCon?1:0.1,size:isSel?c.size*1.8:isCon?c.size*1.25:c.size,borderWidth:isSel?6:isCon?3:1};
+  }));
+  edges.update(edges.getIds().map(id=>{
+    const isCon=connEdges.includes(id),e=edges.get(id);
+    return{id,width:isCon?(e.width||1.2)*1.6:0.15,color:{color:isCon?(e.color?.color||"#888"):"#1a1a20",highlight:isCon?"#fff":"#1a1a20",hover:isCon?"#fff":"#1a1a20"},font:{size:isCon?10:0,color:isCon?"#fff":"#1a1a20",strokeWidth:0,align:"middle"}};
+  }));
+  updateCharInfo(char,connNodes);
+}
+
+function deselectNode(){
+  selectedNode=null;
+  nodes.update(nodes.getIds().map(id=>{const c=nodes.get(id);return{id,opacity:1,size:c._os||c.size,borderWidth:2.5};}));
+  edges.update(edges.getIds().map(id=>{const e=edges.get(id);return{id,width:e._ow||e.width||1.2,color:{color:e._oc||e.color?.color||"#888",highlight:"#fff",hover:"#fff"},font:{size:7,color:e._ol||"#888",strokeWidth:0,align:"middle"}};}));
+  document.getElementById("placeholder").style.display="block";
+  document.getElementById("charInfo").querySelectorAll(".card").forEach(el=>el.remove());
+}
+nodes.forEach(n=>{n._os=n.size;});
+edges.forEach(e=>{e._ow=e.width;e._oc=e.color?.color;e._ol=e.font?.color;});
+
+function updateCharInfo(char,cIds){
+  document.getElementById("placeholder").style.display="none";
+  const infoEl=document.getElementById("charInfo");
+  infoEl.querySelectorAll(".card").forEach(el=>el.remove());
+  const gc=groupColors[char.group]||{bg:"#666",border:"#888"};
+  const conns=cIds.map(id=>nodes.get(id));
+  const cEdges=cIds.map(id=>{
+    const eids=network.getConnectedEdges(char.id);
+    return eids.map(eid=>edges.get(eid)).find(e=>(e.from===char.id&&e.to===id)||(e.to===char.id&&e.from===id));
+  }).filter(Boolean);
+  const card=document.createElement("div");
+  card.className="card";
+  card.innerHTML=`
+    <div class="name" style="color:${gc.border}">${char.label}</div>
+    <div class="title-line">${char.title} · ${char.element} · ${char.weapon} <span style="color:${gc.border}">${char.rarity}</span></div>
+    <div class="tags">
+      <span style="color:${gc.border};border-color:${gc.border}40;background:${gc.border}15;">${char.group}</span>
+      <span style="color:#8b90a0;border-color:#8b90a040;background:#8b90a015;">${char.element}</span>
+      <span style="color:#8b90a0;border-color:#8b90a040;background:#8b90a015;">v${char.ver}</span>
+    </div>
+    <div class="desc">${char.desc}</div>
+    <h4>&#9654; 关系网络 (${conns.length})</h4>
+    <ul class="relation-list">
+      ${conns.map((c,i)=>{const edge=cEdges[i],rt=edge?edge.label||"关联":"关联",rc=edge?(edge.color?.color||"#888"):"#888";return`<li onclick="selectNode('${c.id}')"><span class="rel-dot" style="background:${groupColors[c.group]?.bg||'#666'}"></span><span>${c.label}</span><span class="rel-type" style="color:${rc}">${rt}</span></li>`;}).join("")}
+    </ul>`;
+  infoEl.appendChild(card);
+}
+
+// ==================== 搜索 ====================
+document.getElementById("searchInput").addEventListener("input",function(e){
+  const q=e.target.value.trim();if(!q){deselectNode();return;}
+  const m=characters.find(c=>c.label.includes(q)||c.id.includes(q));
+  if(m){selectNode(m.id);network.focus(m.id,{scale:1.5,animation:{duration:400,easingFunction:"easeInOutQuad"}});}
+});
+
+function resetNetwork(){deselectNode();network.fit({animation:{duration:600,easingFunction:"easeInOutQuad"}});document.getElementById("searchInput").value="";}
+window.addEventListener("resize",()=>network.fit({animation:false}));
+setTimeout(()=>network.fit({animation:false}),600);
+</script>
+</body>
+</html>
